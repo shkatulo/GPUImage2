@@ -3,6 +3,7 @@ import AVFoundation
 public protocol AudioEncodingTarget {
     func activateAudioTrack()
     func processAudioBuffer(_ sampleBuffer:CMSampleBuffer)
+    func markAudioAsFinished()
 }
 
 public class MovieOutput: ImageConsumer, AudioEncodingTarget {
@@ -148,13 +149,20 @@ public class MovieOutput: ImageConsumer, AudioEncodingTarget {
         
         renderIntoPixelBuffer(pixelBuffer!, framebuffer:framebuffer)
         
-        if (!assetWriterPixelBufferInput.append(pixelBuffer!, withPresentationTime:frameTime)) {
-            debugPrint("Problem appending pixel buffer at time: \(frameTime)")
+        defer {
+            CVPixelBufferUnlockBaseAddress(pixelBuffer!, CVPixelBufferLockFlags(rawValue:CVOptionFlags(0)))
+            if !sharedImageProcessingContext.supportsTextureCaches() {
+                pixelBuffer = nil
+            }
         }
         
-        CVPixelBufferUnlockBaseAddress(pixelBuffer!, CVPixelBufferLockFlags(rawValue:CVOptionFlags(0)))
-        if !sharedImageProcessingContext.supportsTextureCaches() {
-            pixelBuffer = nil
+        if !assetWriterVideoInput.isReadyForMoreMediaData {
+            print("Skip video frame")
+            return
+        }
+        
+        if (!assetWriterPixelBufferInput.append(pixelBuffer!, withPresentationTime:frameTime)) {
+            debugPrint("Problem appending pixel buffer at time: \(frameTime)")
         }
     }
     
@@ -190,7 +198,7 @@ public class MovieOutput: ImageConsumer, AudioEncodingTarget {
     public func processAudioBuffer(_ sampleBuffer:CMSampleBuffer) {
         guard let assetWriterAudioInput = assetWriterAudioInput else { return }
         
-        sharedImageProcessingContext.runOperationSynchronously{
+//        sharedImageProcessingContext.runOperationSynchronously{
             let currentSampleTime = CMSampleBufferGetOutputPresentationTimeStamp(sampleBuffer)
             if (self.startTime == nil) {
                 if (self.assetWriter.status != .writing) {
@@ -205,10 +213,20 @@ public class MovieOutput: ImageConsumer, AudioEncodingTarget {
                 return
             }
             
+            while (!assetWriterAudioInput.isReadyForMoreMediaData) {
+                let maxDate = Date.init(timeIntervalSinceNow: 0.1)
+                RunLoop.current.run(until: maxDate)
+            }
+        
             if (!assetWriterAudioInput.append(sampleBuffer)) {
                 print("Trouble appending audio sample buffer")
             }
-        }
+//        }
+    }
+    
+    public func markAudioAsFinished() {
+        self.audioEncodingIsFinished = true
+        self.assetWriterAudioInput?.markAsFinished()
     }
 }
 

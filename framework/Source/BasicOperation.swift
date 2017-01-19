@@ -155,7 +155,17 @@ open class BasicOperation: ImageProcessingOperation {
         if let outputSize = overriddenOutputSize {
             return GLSize(outputSize)
         } else {
-            return inputFramebuffer.sizeForTargetOrientation(.portrait)
+            if let outputRotation = overriddenOutputRotation {
+                if outputRotation == .rotateClockwise || outputRotation == .rotateCounterclockwise || outputRotation == .rotateClockwiseAndFlipVertically || outputRotation == .rotateClockwiseAndFlipHorizontally {
+                    return inputFramebuffer.sizeForTargetOrientation(.landscapeLeft)
+                }
+                else {
+                    return inputFramebuffer.sizeForTargetOrientation(.portrait)
+                }
+            }
+            else {
+                return inputFramebuffer.sizeForTargetOrientation(.portrait)
+            }
         }
     }
     
