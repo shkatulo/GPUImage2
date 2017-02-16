@@ -42,7 +42,7 @@ public class MovieInput: ImageSource {
     public var onFail: ((MovieInput, Error) -> Void)?
     public var onProgressChange: ((MovieInput) -> Void)?
     
-    public var audioEncodingTarget:AudioEncodingTarget? {
+    public weak var audioEncodingTarget: AudioEncodingTarget? {
         didSet {
             guard audioEncodingTarget != nil else {
                 self.removeAudioInputsAndOutputs()
@@ -67,7 +67,9 @@ public class MovieInput: ImageSource {
         self.playAtActualSpeed = playAtActualSpeed
         self.loop = loop
         self.playSound = playSound
-        self.yuvConversionShader = crashOnShaderCompileFailure("MovieInput"){try sharedImageProcessingContext.programForVertexShader(defaultVertexShaderForInputs(2), fragmentShader:YUVConversionFullRangeFragmentShader)}
+        self.yuvConversionShader = crashOnShaderCompileFailure("MovieInput") {
+            try sharedImageProcessingContext.programForVertexShader(defaultVertexShaderForInputs(2), fragmentShader:YUVConversionFullRangeFragmentShader)
+        }
         
         self.initAssetReader()
     }
@@ -79,7 +81,12 @@ public class MovieInput: ImageSource {
     }
     
     private func initAssetReader() {
-        self.assetReader = try? AVAssetReader(asset:self.asset)
+        do {
+            self.assetReader = try AVAssetReader(asset:self.asset)
+        }
+        catch let error as NSError {
+            NSLog("Failed to initialise assetReader  with error: %@", error)
+        }
         
         let outputSettings:[String:AnyObject] = [(kCVPixelBufferPixelFormatTypeKey as String):NSNumber(value:Int32(kCVPixelFormatType_420YpCbCr8BiPlanarFullRange))]
         let videoTrack = self.asset.tracks(withMediaType: AVMediaTypeVideo)[0]
@@ -163,9 +170,14 @@ public class MovieInput: ImageSource {
             
             // Video
             DispatchQueue.global().async {
-                guard self.assetReader!.startReading() else {
+                guard self.assetReader != nil else { // BUG: Black screen happened after this or next guard (was single expression before case)
                     self.onFail?(self, NSError(domain: self.ErrorDomain, code: self.ErrorCodeStartReading, userInfo: nil))
-                    print("Couldn't start reading")
+                    NSLog("Couldn't start reading. AssetReader is nil")
+                    return
+                }
+                guard self.assetReader!.startReading() else { // BUG: Black screen happened after this or previous guard (was single expression before case) !!!!!
+                    self.onFail?(self, NSError(domain: self.ErrorDomain, code: self.ErrorCodeStartReading, userInfo: nil))
+                    NSLog("Couldn't start reading with error: %@ - status: %d", (self.assetReader!.error as? NSError) ?? "<NO_ERROR_OBJECT>", self.assetReader!.status.rawValue)
                     return
                 }
                 

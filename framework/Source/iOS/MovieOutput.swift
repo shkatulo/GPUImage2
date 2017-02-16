@@ -1,6 +1,6 @@
 import AVFoundation
 
-public protocol AudioEncodingTarget {
+public protocol AudioEncodingTarget : class {
     func activateAudioTrack()
     func processAudioBuffer(_ sampleBuffer:CMSampleBuffer)
     func markAudioAsFinished()
